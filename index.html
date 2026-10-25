@@ -231,7 +231,7 @@ const PR=id=>Math.max(1,Math.round(ITEMS[id].p*(curShop==='duende'?1:pm(curShop=
 const tfmt=()=>{const t=Math.ceil(dayT);return Math.floor(t/60)+':'+String(t%60).padStart(2,'0');};
 const needTxt=o=>Object.keys(o).map(k=>o[k]+' '+MATN[k]).join(' e ');
 function rp(n,d){if(REP[n]===undefined)return;REP[n]=Math.max(0,Math.min(100,REP[n]+d));refreshNL();}
-function qAvail(n){const o=QD[n];return day>=2&&q>=20&&(!o||o.day!==day);}
+function qAvail(n){const o=QD[n];return day>=2&&q>=20&&q!==23&&(!o||o.day!==day);}
 function refreshNL(){for(const n in NL){const hq=QN.includes(n)&&qAvail(n)&&dayT>0;NL[n].innerHTML=(hq?'<b style="color:#ffcc33">! </b>':'')+n+'<i class="rb"><u style="width:'+Math.round(REP[n]||0)+'%"></u></i>';}}
 function openGate(){if(gate&&gate.solid){gate.solid=false;const i=boxes.indexOf(gate);if(i>=0)boxes.splice(i,1);}}
 function closeGate(){if(gate&&!gate.solid){gate.solid=true;boxes.push(gate);}}
@@ -262,11 +262,11 @@ function npcTalk(name,fn){
       {t:'Aceito',f:()=>{QD[name]=Object.assign({day,st:'active',rw},q0);refreshNL();},say:'Combinado.'},
       {t:'Recuso',f:()=>{QD[name]={day,st:'refused'};rp(name,-4);},say:'Entendo. Cada um carrega o que aguenta.'}]]]));return;}
   const [ls,end]=fn(),b=REP[name]<25?0:REP[name]<50?1:2,BGL=[['Fale logo. Tenho trabalho.','Some daqui.'],['Hm. Você de novo.','O de sempre?'],['Que bom te ver, príncipe.','Cuide-se lá embaixo.']],r=Math.random();
-  if(day<2){}else if(r<.3)ls.unshift([name,BGL[b][Math.floor(Math.random()*2)]]);else if(r<.42)ls.unshift([name,'Você anda falando sozinho. O povo comenta.']);
+  if(day<2||name==='Tharik'||q===23){}else if(r<.3)ls.unshift([name,BGL[b][Math.floor(Math.random()*2)]]);else if(r<.42)ls.unshift([name,'Você anda falando sozinho. O povo comenta.']);
   talk(pre.concat(ls),end);
 }
 function sleepPen(){
-  if(day>=2){if(q===20){gold=0;for(let i=1;i<=9;i++)inv[i]=0;rp('Thorin',-15);}else if(q===21){missed=Math.min(3,missed+1);rp('Supervisor',-5);}}
+  if(day>=2){if(q===20||q===23){gold=0;for(let i=1;i<=9;i++)inv[i]=0;rp('Thorin',-15);}else if(q===21){missed=Math.min(3,missed+1);rp('Supervisor',-5);}}
   for(const n in QD){const o=QD[n];if(o.st==='active'&&o.day===day){o.st='fail';rp(n,-8);}}
 }
 const CK=['Fôlego','Passos','Força','Resistência','Lanterna'],CN=['Fôlego','Botas','Ombros','Vida','Olhos'];
@@ -343,6 +343,7 @@ function dayDone(){const D=dayGoal();if((D.depth||0)>maxToday||(D.kills||0)>dayK
 function payDay(){const D=dayGoal();for(const k in D.ore)inv[k]-=D.ore[k];gold+=25*day;missed=0;rp('Supervisor',3);setQ(22);}
 function missionText(){
   if(q<20)return MISSIONS[q];
+  if(q===23)return 'vá ao salão: o rei exige sua presença';
   if(q===20)return 'bata o ponto com o supervisor na mina';
   if(q===21)return dayGoal().txt+' ('+dqProg(dayGoal())+')';
   return 'volte pra casa e durma';
@@ -367,7 +368,8 @@ function buildWorld(){
   box(-15,-14,30,-14,-6,60,WALL);
   box(-6,-14,30,-5,-6,60,WALL);
   npc(-10,0,9,0x5a5a6a,'Supervisor','mina',()=>{
-    if(q>=6||day>=2)openGate();
+    if((q>=6||day>=2)&&!(day>=3&&q===20&&!kingSeen))openGate();
+    if(day>=3&&q===20&&!kingSeen)return [[['Supervisor','O rei exige a sua presença no salão. Agora. O ponto fica pra depois.'],['Supervisor','A mina continua fechada até você falar com ele.']],()=>setQ(23)];
     if(day>=2){
       if(q===20)return [[['Supervisor','Ponto batido. Hoje: '+dayGoal().txt+'.']],()=>setQ(21)];
       if(q===21){if(dayDone())return [[['Supervisor','Bom trabalho. Aqui estão '+(25*day)+' de ouro. Vá descansar.']],()=>payDay()];
@@ -417,7 +419,9 @@ function buildWorld(){
     if(q===4){inv[2]+=3;talk([['','Três de ferro. Não some com eles.']],()=>setQ(5));}
     else openDep();
   });
-  npc(0,0,18,0x3a5a5a,'Tharik','',()=>{const T=['Você carrega essa coroa como quem carrega uma pedra, príncipe. Um dia ela é sua.','Quando foi a última vez que você dormiu sem beber?','Seu pai se esconde atrás do mithril. Você sabe disso.','Se eu pudesse escolher, morreria de novo. Se isso significa alguma coisa.','Pra que serve um trono, se não há ninguém sentado ao lado?','Fundo demais, você vai achar o que seu pai enterrou.','Eu ainda ouço o machado. Você também, não ouve?'];tIdx=(tIdx+day)%T.length;return [[['Tharik',T[tIdx]]]];});
+  npc(0,0,18,0x3a5a5a,'Tharik','',()=>{tIdx=(tIdx+1)%TH.length;const E=TH[tIdx],L=[];
+    if(tRel>=3&&Math.random()<.5)L.push(['Tharik','Você voltou. Gosto quando você volta.']);else if(tRel<=-3&&Math.random()<.5)L.push(['Tharik','Ah. O príncipe da ressaca.']);
+    L.push(['Tharik',E.t,E.o&&E.o.map(o=>({t:o.t,say:o.say,f:()=>{tRel+=o.d;}}))]);return [L];});
 
   // salão do rei
   box(-30,-1,-60,30,8,-26,FLOOR);
@@ -431,7 +435,16 @@ function buildWorld(){
   tw(-29.8,10,-40);tw(29.8,10,-40);tw(-12,10,-59.8);tw(12,10,-59.8);tf(-14,8,-44);tf(14,8,-44);
   npc(0,8,-53,0x7a2a2a,'Thorin','rei',()=>{
     if(q===2)return [[['Thorin','Você saiu das férias. Precisamos de gente na mina. Aceita sem reclamar?',[{t:'Aceito, pai.',f:()=>rep++,say:'Bom. Fale com o Gloin. Ele tem as ferramentas.'},{t:'Eu não pedi isso.',f:()=>rep--,say:'Um príncipe não pede. Gloin. Agora.'}]]],()=>setQ(3)];
-    if(day>=3&&!war)return [[['Thorin','Os orcs cercam o vale. A guerra começou. Quero você comigo, ou na mina?',[{t:'Marchar ao seu lado',f:()=>{war=true;rep+=2;P.hp=Math.max(10,P.hp-30);gold+=40;},say:'Volte vivo. Aqui, 40 de ouro pelo escudo.'},{t:'Ficar na mina',f:()=>{war=true;rep-=2;},say:'A mina não ganha guerras por você. Vá.'}]]]];
+    if(q===23)return [[['Thorin','Você chegou. Cheirando à cerveja de ontem.'],
+      ['Thorin','Eu me lembro de um garoto que corria por estes salões com uma espada de madeira. Esse garoto não mora mais aí.'],
+      ['Thorin','Anos atrás, na guerra, mandei você e seu grupo flanquear o inimigo pelas árvores. Você se lembra?',[{t:'Lembro de tudo, todos os dias.',f:()=>rp('Thorin',2),say:'Então sabe do que estou falando.'},{t:'Não quero falar disso.',f:()=>rp('Thorin',-3),say:'Você nunca quer. É por isso que estamos aqui.'}]],
+      ['Thorin','Havia orcs sob a terra, esperando entre as raízes. Metade do seu grupo se perdeu ali. Você mandou o resto recuar. Foi a decisão certa, filho.'],
+      ['Thorin','Antes de sair, você viu seu amigo ser partido ao meio por um orc. O olhar dele, o machado erguido, aquele grito na nossa língua. Você nunca mais voltou daquele lugar.'],
+      ['Thorin','Eu perdi homens também. Muitos. Chorar não os traz de volta. Morreram para que a montanha ficasse de pé, e seu amigo iria querer que você continuasse. Foi por um bem maior.',[{t:'Você fala deles como se fossem pedras.',f:()=>rp('Thorin',-6),say:'Pedras sustentam muros. Homens sustentam reinos, e reinos cobram o preço.'},{t:'Eu não sou covarde. Só não quero ser você.',f:()=>rp('Thorin',-8),say:'Cuidado com a língua, garoto.'},{t:'Eu só queria que ele estivesse aqui.',f:()=>rp('Thorin',2),say:'Todos queremos. Mas o desejo não levanta muralhas.'}]],
+      ['Thorin','Chega. Tenho vergonha do que você virou, e do que deixei você virar. Falhei com você, e falhar é um luxo que um rei não tem.'],
+      ['Thorin','A partir de hoje você não é mais herdeiro. Não é mais príncipe. É um mineiro como qualquer outro, e vai aprender a ser homem como todo homem aprende: cavando.',[{t:'Eu nunca pedi esse título.',f:()=>rp('Thorin',-2),say:'Ninguém pede. Todos carregam.'},{t:'Faça o que quiser, pai.',f:()=>rp('Thorin',-4),say:'Pai? Hoje não. Hoje sou o seu rei.'},{t:'E se eu não aguentar?',f:()=>rp('Thorin',1),say:'Então morre cavando, como os outros.'}]],
+      ['Thorin','Volte ao supervisor. Bata o ponto. E não me envergonhe de novo.']],()=>{kingSeen=true;setQ(20);}];
+    if(false)return [[['Thorin','Os orcs cercam o vale. A guerra começou. Quero você comigo, ou na mina?',[{t:'Marchar ao seu lado',f:()=>{war=true;rep+=2;P.hp=Math.max(10,P.hp-30);gold+=40;},say:'Volte vivo. Aqui, 40 de ouro pelo escudo.'},{t:'Ficar na mina',f:()=>{war=true;rep-=2;},say:'A mina não ganha guerras por você. Vá.'}]]]];
     return [[['Thorin','Não me faça perder tempo.']]];
   });
 
@@ -519,7 +532,7 @@ function mkSpider(x,z){
   spiders.push({g,legs,hp:6,x,z,cd:0,aggro:false,type:'spider'});
 }
 function genMine(seed){
-  seedRnd(seed);mg.fill(1);rooms=[];clearSpiders();clearStruct();kingOn=false;if(mineLvl===31){genAnte();return;}
+  curSeed=seed;mineDiff=[];seedRnd(seed);mg.fill(1);rooms=[];clearSpiders();clearStruct();kingOn=false;if(mineLvl===31){genAnte();return;}
   carve(26,0,34,10);
   let px=30,pz=10;
   const n=3+bandOf(mineLvl);
@@ -671,7 +684,8 @@ var invPrev=[0,0,0,0,0,0,0,0,0,0],invStk=[];
 function trackInv(){for(let i=1;i<=9;i++){const d=inv[i]-invPrev[i];if(d>0)for(let n=0;n<d;n++)invStk.push(i);else if(d<0)for(let n=0;n<-d;n++){const k=invStk.lastIndexOf(i);if(k>=0)invStk.splice(k,1);}invPrev[i]=inv[i];}if(invStk.length>300)invStk.splice(0,invStk.length-300);dropVis();}
 function dropVis(){const b=$('bDrop');if(!b)return;const v=(isTouch&&gameStarted&&!menuOn&&S.float&&ores()>0)?'block':'none';if(b.style.display!==v)b.style.display=v;}
 function dropLast(){trackInv();while(invStk.length){const i=invStk.pop();if(inv[i]>0){inv[i]--;invPrev[i]=inv[i];sfx('out');return;}}}
-var swingT=0,parts=[];const PG=new THREE.BoxGeometry(1,1,1);
+var swingT=0,parts=[],kingSeen=false,tRel=0;
+var TH=[{t:'Você carrega essa coroa como quem carrega uma pedra, príncipe. Um dia ela é sua.'},{t:'Quando foi a última vez que você dormiu sem beber?',o:[{t:'Hoje pode ser melhor que ontem, eu acho.',d:1,say:'Você diz "acho" como quem aposta na própria derrota.'},{t:'Eu só sei continuar cavando.',d:0,say:'Cavando. Sempre cavando. Você já ouviu o que isso diz de você?'}]},{t:'Seu pai se esconde atrás do mithril. Você sabe disso.'},{t:'Se eu pudesse escolher, morreria de novo. Se isso significa alguma coisa.'},{t:'Pra que serve um trono, se não há ninguém sentado ao lado?',o:[{t:'Vou sempre te ter comigo.',d:2,say:'Que bonito. Pena que eu já não caibo no seu bolso.'},{t:'Eu deveria parar de me preocupar tanto.',d:0,say:'Você? Preocupado? Só se for com o fundo da caneca.'}]},{t:'Fundo demais, você vai achar o que seu pai enterrou.'},{t:'Eu ainda ouço o machado. Você também, não ouve?'},{t:'Eu preferiria morrer mil vezes a viver que nem você, nesse estado. Podre.',o:[{t:'E se eu parar de cavar?',d:-1,say:'Então você apodrece mais devagar. Mas pelo menos por cima.'},{t:'Hoje o dia vai ser daqueles.',d:-1,say:'Todos são daqueles. A diferença é que hoje você me escutou.'}]},{t:'Já pensou em parar de procurar o que não existe?',o:[{t:'Eu só sei continuar cavando.',d:0,say:'Então cave. Pelo menos o buraco é honesto.'},{t:'E se eu parar de cavar?',d:1,say:'Aí você vai ter que olhar pra cima. Terrível.'}]},{t:'Toc, toc. Sabe quem é? Não sou eu!',o:[{t:'Vou sempre te ter comigo.',d:1,say:'Esse é o problema, príncipe. Eu não saio daqui.'},{t:'Eu deveria parar de me preocupar tanto.',d:0,say:'Boa piada. Devia fazer graça no salão do rei.'}]},{t:'Você me deve um brinde. Eu fico com a parte líquida, você com a ressaca.'},{t:'Pelo menos os mortos não precisam bater ponto.',o:[{t:'Hoje pode ser melhor que ontem, eu acho.',d:1,say:'Otimista de bêbado. Meu favorito.'},{t:'Eu só sei continuar cavando.',d:0,say:'Um dia você vai cavar até me encontrar.'}]}];const PG=new THREE.BoxGeometry(1,1,1);
 function burst(x,y,z,c,n){const m=new THREE.MeshBasicMaterial({color:c});for(let i=0;i<n;i++){const e=new THREE.Mesh(PG,m),sz=.05+Math.random()*.06;e.scale.set(sz,sz,sz);e.position.set(x,y,z);scene.add(e);parts.push({e,vx:(Math.random()-.5)*3,vy:1.5+Math.random()*2.5,vz:(Math.random()-.5)*3,t:.7+Math.random()*.5});}}
 function updParts(dt){for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.t-=dt;p.vy-=9*dt;const q2=p.e.position;q2.x+=p.vx*dt;q2.y+=p.vy*dt;q2.z+=p.vz*dt;if(q2.y<-13.95){q2.y=-13.95;p.vy=0;p.vx*=.8;p.vz*=.8;}if(p.t<=0){scene.remove(p.e);parts.splice(i,1);}}}
 function consumeTorch(){const i=hot.findIndex(h=>h&&h.id==='tocha');if(i<0)return;hot[i].n--;if(hot[i].n<=0){hot[i]=null;if(sel===i)sel=-1;}sfx('out');hudHot();}
@@ -859,7 +873,7 @@ function openPanel(cls,title,rows,extra){
   ACTS=rows.map(r=>r.f);
   const bt=rows.map((r,i)=>r.pm?(()=>{const a=ACTS.length;ACTS.push(r.pm[0],r.pm[1]);return `<div class="orow"><span>${r.t}</span><button data-i="${a}">−</button><button data-i="${a+1}">+</button></div>`;})():`<button data-i="${i}"${r.dis?' disabled':''}>${r.t}</button>`),btns=bt.join('');
   const cl=c=>bt.filter((x,i)=>rows[i].col===c).join('');
-  const body=rows.dep?`<div style="display:flex;gap:10px"><div style="flex:1"><b>Mochila ${ores()}/${capOre()}</b>${cl(0)}</div><div style="flex:1"><b>Depósito ${depTot()}/${depCap()}</b>${cl(1)}</div></div>${cl(2)}`:cls==='upg'?`<div class="grid">${btns}</div>`:btns;
+  const body=rows.two?`<div style="display:flex;gap:10px"><div style="flex:1"><b>${rows.two[0]}</b>${cl(0)}</div><div style="flex:1"><b>${rows.two[1]}</b>${cl(1)}</div></div>${cl(2)}`:rows.dep?`<div style="display:flex;gap:10px"><div style="flex:1"><b>Mochila ${ores()}/${capOre()}</b>${cl(0)}</div><div style="flex:1"><b>Depósito ${depTot()}/${depCap()}</b>${cl(1)}</div></div>${cl(2)}`:cls==='upg'?`<div class="grid">${btns}</div>`:btns;
   $('ov').className=cls;
   $('ovbox').innerHTML=(title?`<${cls==='start'?'h1':'h2'}>${title}</${cls==='start'?'h1':'h2'}>`:'')+(cls==='start'?'<small>UM CONTO DA MONTANHA SOLITÁRIA</small>':'')+(extra||'')+body;
   $('ov').style.display='flex';
@@ -951,14 +965,14 @@ function openShop(name){
   const list=name==='duende'?['pao','cerveja','corda','tocha','lanterna','pickFe','pickPr','pickMi','espada','espadaFe','espadaPr','espadaMi','armCo','armFe','armPr','armMi']:name==='merc'?['pao','cerveja','corda','tocha','lanterna']:['pickFe','pickPr','pickMi','espada','espadaFe','espadaPr','espadaMi','armCo','armFe','armPr','armMi'];
   for(const id of list){
     if(!canShow(id))continue;
-    rows.push({t:`${ITEMS[id].n} — ${PR(id)} ouro`+(ITEMS[id].mat?' + '+Object.keys(ITEMS[id].mat).map(k=>MATN[k]+' x'+ITEMS[id].mat[k]).join(', '):''),dis:gold<PR(id),f:()=>buyItem(id)});
+    rows.push({t:`${ITEMS[id].n} — ${PR(id)} ouro`+(ITEMS[id].mat?' + '+Object.keys(ITEMS[id].mat).map(k=>MATN[k]+' x'+ITEMS[id].mat[k]).join(', '):''),dis:gold<PR(id),col:0,f:()=>buyItem(id)});
   }
   if(name!=='merc'){
     [[1,'Pedra',1],[2,'Ferro',5],[3,'Prata',10],[4,'Mithril',30],[5,'Cobre',7],[6,'Ouro',18],[7,'Rubi',45],[8,'Fibra',6],[9,'Couro',8]].forEach(([id,n,p])=>{
-      if(inv[id]>0)rows.push({t:`Vender ${n} (${inv[id]}) — ${Math.round(p*pm('Gloin',false)*(1+.05*X.sell))} ouro cada`,f:()=>{gold+=Math.round(p*pm('Gloin',false)*(1+.05*X.sell))*inv[id];inv[id]=0;saveGame();openShop('ferr');}});
+      if(inv[id]>0)rows.push({col:1,t:`Vender ${n} (${inv[id]}) — ${Math.round(p*pm('Gloin',false)*(1+.05*X.sell))} ouro cada`,f:()=>{gold+=Math.round(p*pm('Gloin',false)*(1+.05*X.sell))*inv[id];inv[id]=0;saveGame();openShop(name);}});
     });
   }
-  rows.push({t:'Sair',f:closePanel});
+  rows.push({col:2,t:'Sair',f:closePanel});if(name!=='merc')rows.two=['Comprar','Vender'];
   openPanel('shop',name==='merc'?'Azaghal':name==='duende'?'Duende':'Ferreiro',rows,`<p>Ouro: ${gold} · Itens: ${hot.filter(Boolean).length}</p>`);
 }
 function upgCost(c){return 15*(U[c]+1)*(U[c]+1);}
@@ -987,16 +1001,24 @@ function useFood(){
 }
 
 /* ---------- save ---------- */
+var curSeed=1,mineDiff=[];
+function saveOpts(){try{localStorage.setItem('abismo_opts',JSON.stringify({S,musicOn,sfxOn}));}catch(e){}}
+function loadOpts(){try{const o=JSON.parse(localStorage.getItem('abismo_opts')||'null');if(o){Object.assign(S,o.S||{});if(o.musicOn!==undefined)musicOn=o.musicOn;if(o.sfxOn!==undefined)sfxOn=o.sfxOn;}}catch(e){}}
 function saveGame(){
-  try{localStorage.setItem('abismo_save',JSON.stringify({day,inv,q,gold,U,hot,rep,tDebt,war,X,treeB,REP,missed,bestLvl,bossDead,DEP,elevSave}));}catch(e){}
+  try{localStorage.setItem('abismo_save',JSON.stringify({v:2,day,inv,q,gold,U,hot,sel,rep,tDebt,tOffer,war,X,treeB,REP,QD,missed,bestLvl,bossDead,DEP,elevSave,kingSeen,tRel,tIdx,dayT,dayKills,maxToday,torchT,beerT,hp:P.hp,st:P.st,pos:{x:P.x,y:P.y,z:P.z,yaw:P.yaw},mineLvl,seed:curSeed,diff:mineDiff}));}catch(e){}
+  saveOpts();
 }
+function flushSave(){if(gameStarted)saveGame();else saveOpts();}
+setInterval(flushSave,2000);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)flushSave();});
+addEventListener('pagehide',flushSave);addEventListener('beforeunload',flushSave);
 function loadData(){try{return JSON.parse(localStorage.getItem('abismo_save')||'null');}catch(e){return null;}}
 
 /* ---------- início ---------- */
 function newGame(){
   day=1;q=0;gold=20;inv.fill(0);
   for(const k in U)U[k]=0;
-  hot.length=0;sel=-1;for(const k in X)X[k]=0;treeB.casa=[];treeB.feira=[];Object.assign(REP,REP0);for(const k in QD)delete QD[k];missed=0;bestLvl=1;bossDead=false;DEP=[0,0,0,0,0,0,0,0,0,0];elevSave=[1];rep=0;tDebt=false;tOffer=false;war=false;mineLvl=1;maxToday=1;dayKills=0;torchT=0;
+  hot.length=0;sel=-1;for(const k in X)X[k]=0;treeB.casa=[];treeB.feira=[];Object.assign(REP,REP0);for(const k in QD)delete QD[k];missed=0;bestLvl=1;bossDead=false;DEP=[0,0,0,0,0,0,0,0,0,0];elevSave=[1];kingSeen=false;tRel=0;rep=0;tDebt=false;tOffer=false;war=false;mineLvl=1;maxToday=1;dayKills=0;torchT=0;
   genMine(((Math.random()*1e9)|0)+1);rebuildMine();
   spawnHome();P.st=1;P.hp=maxHP();dayT=600;closeGate();if(q>=6&&q!==20)openGate();
   startFade();
@@ -1007,12 +1029,18 @@ function newGame(){
 function loadGame(){
   const d=loadData();if(!d)return false;
   day=d.day||1;q=d.q||0;if(q===9)q=20;gold=d.gold??20;rep=d.rep||0;tDebt=!!d.tDebt;war=!!d.war;Object.assign(X,d.X||{});if(d.treeB)Object.assign(treeB,d.treeB);if(d.REP)Object.assign(REP,d.REP);missed=d.missed||0;bestLvl=d.bestLvl||1;bossDead=!!d.bossDead;DEP=d.DEP||[0,0,0,0,0,0,0,0,0,0];elevSave=d.elevSave||[1];mineLvl=1;maxToday=1;dayKills=0;torchT=0;
-  d.inv.forEach((v,i)=>{inv[i]=v;});
+  d.inv.forEach((v,i)=>{inv[i]=v||0;});
   Object.assign(U,d.U||{});
-  if(d.hot)d.hot.forEach((v,i)=>{hot[i]=v;});
-  genMine(((Math.random()*1e9)|0)+1);rebuildMine();
-  spawnHome();P.st=1;P.hp=maxHP();dayT=600;closeGate();if(q>=6&&q!==20)openGate();
-  gameStarted=true;
+  hot.length=0;if(d.hot)d.hot.forEach((v,i)=>{hot[i]=v||null;});sel=(d.sel!==undefined&&d.sel>=0&&hot[d.sel])?d.sel:-1;
+  kingSeen=!!d.kingSeen;tRel=d.tRel||0;tIdx=d.tIdx||0;tOffer=!!d.tOffer;dayKills=d.dayKills||0;maxToday=d.maxToday||1;torchT=d.torchT||0;beerT=d.beerT||0;
+  for(const k in QD)delete QD[k];Object.assign(QD,d.QD||{});
+  if(d.seed&&d.mineLvl){mineLvl=d.mineLvl;genMine(d.seed);for(const [i,v] of (d.diff||[]))mg[i]=v;mineDiff=d.diff||[];}
+  else genMine(((Math.random()*1e9)|0)+1);
+  rebuildMine();
+  spawnHome();
+  if(d.pos&&isFinite(d.pos.x)){P.x=d.pos.x;P.y=d.pos.y;P.z=d.pos.z;P.yaw=d.pos.yaw||0;}
+  P.st=d.st??1;P.hp=d.hp>0?d.hp:maxHP();dayT=d.dayT??600;closeGate();if(q>=6&&q!==20)openGate();
+  hudHot();refreshNL();gameStarted=true;
   return true;
 }
 function startFade(){
@@ -1120,7 +1148,7 @@ tens=spiders.some(x=>x.aggro)?1.2:(P.y<-12?.7:.25);
     $('prog').querySelector('i').style.width=Math.min(100,mtT/need*100)+'%';
     if(mtT>=need){
       inv[id]++;sfx(id>=3?'pick':'break');
-      mg[mi(tgt.i,tgt.j,tgt.k)]=0;
+      {const ci=mi(tgt.i,tgt.j,tgt.k);mg[ci]=0;mineDiff.push([ci,0]);}
       mt=null;mtT=0;rebuildMine();
       $('prog').style.display='none';
     }
@@ -1310,7 +1338,7 @@ function startMusic(){
 
 /* ---------- start ---------- */
 resize();
-applyUI();$('crt').style.display='block';
+loadOpts();resize();applyUI();$('crt').style.display=S.crt?'block':'none';
 buildWorld();
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.BasicShadowMap;
 torch.castShadow=true;torch.shadow.mapSize.set(512,512);torch.shadow.camera.near=.15;torch.shadow.camera.far=40;torch.shadow.bias=-.004;
