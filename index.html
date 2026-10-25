@@ -119,6 +119,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#000;color:#e8e0c8;fon
 #ov.start small{color:#e8c47a;text-shadow:0 2px 0 #000,0 0 8px #000;letter-spacing:3px}
 #ov.start button{background:linear-gradient(#3b2a17,#1b120a);color:#f2d9a0;border:3px solid #b8863a;box-shadow:3px 3px 0 #000,0 0 14px rgba(255,140,40,.22);font:bold 16px Georgia,serif;letter-spacing:2px;text-align:center;text-shadow:0 2px 0 #000}
 #ov.start button:hover:not(:disabled){background:linear-gradient(#5e3d1b,#2a1a0b);border-color:#ffc866;color:#fff}
+#ov.pause #ovbox,#ov.pause #ovbox *,#ov.pause #ovbox button{color:#000!important;-webkit-text-fill-color:#000!important}
 </style>
 </head>
 <body>
@@ -150,7 +151,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#000;color:#e8e0c8;fon
 const $=id=>document.getElementById(id);
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 const isTouch=matchMedia('(pointer:coarse)').matches||'ontouchstart' in window;
-const S={float:true,retro:true,crt:false,sens:1,fov:70,names:true,sprintHold:true,ui:1};
+const S={float:true,retro:true,crt:true,sens:1,fov:70,names:true,sprintHold:true,ui:1};
 
 /* ---------- renderer ---------- */
 const canvas=$('c');
@@ -236,23 +237,33 @@ function openGate(){if(gate&&gate.solid){gate.solid=false;const i=boxes.indexOf(
 function closeGate(){if(gate&&!gate.solid){gate.solid=true;boxes.push(gate);}}
 function dodge(){if(menuOn||dlg||dodgeCd>0||P.st<.1)return;P.st-=Math.max(.04,.1-.005*X.dodge);invT=.5+.05*X.dodge;dashT=.18;dodgeCd=.7;sfx('swing');}
 function genQ(n){const r=()=>1+Math.floor(Math.random()*3)+Math.floor(day/3),pk=a=>a[Math.floor(Math.random()*a.length)];
-  if(n==='Dûrak'||n==='Grista')return {[pk([8,9])]:r()};
-  if(n==='Azaghal')return {[pk([8,9])]:r()+1};
-  if(n==='Gloin')return {[pk([1,2,3].slice(0,Math.min(3,1+Math.floor(day/2))))]:r()+2};
-  return {[pk([2,3,4].slice(0,Math.min(3,1+Math.floor(day/3))))]:r()};}
+  const others=QN.concat(['Supervisor']).filter(x=>x!==n),t=Math.random();
+  if(t>=.4){const tgt=pk(others);return t<.7?{type:'talk',tgt}:{type:'courier',tgt,stage:0};}
+  let need;
+  if(n==='Dûrak'||n==='Grista')need={[pk([8,9])]:r()};
+  else if(n==='Azaghal')need={[pk([8,9])]:r()+1};
+  else if(n==='Gloin')need={[pk([1,2,3].slice(0,Math.min(3,1+Math.floor(day/2))))]:r()+2};
+  else need={[pk([2,3,4].slice(0,Math.min(3,1+Math.floor(day/3))))]:r()};
+  return {type:'bring',need};}
 function npcTalk(name,fn){
+  const pre=[];
+  for(const g in QD){const o=QD[g];if(o.day!==day||o.st!=='active'||o.tgt!==name)continue;
+    if(o.type==='talk'){o.st='done';gold+=o.rw;rp(g,8);sfx('buy');pre.push([name,'Ah, '+g+' mandou você? Diga que está tudo certo. Tome, pelo trabalho: '+o.rw+' de ouro.']);}
+    else if(o.type==='courier'&&o.stage===0){o.stage=1;sfx('buy');pre.push([name,'Hm. Leve minha resposta de volta para '+g+'. Ele vai saber.']);}}
   const o=QD[name];
   if(o&&o.day===day&&o.st==='active'){
-    if(Object.keys(o.need).every(k=>inv[k]>=o.need[k])){for(const k in o.need)inv[k]-=o.need[k];o.st='done';gold+=o.rw;rp(name,8);sfx('buy');talk([[name,'Entregue. Aqui, '+o.rw+' de ouro. Não vou esquecer.']]);return;}
-    talk([[name,'Ainda falta: '+needTxt(o.need)+'.']]);return;}
+    if(o.type==='courier'&&o.stage===1){o.st='done';gold+=o.rw;rp(name,10);sfx('buy');talk(pre.concat([[name,'Ele respondeu? Ótimo. Aqui, '+o.rw+' de ouro.']]));return;}
+    if(o.type==='bring'&&Object.keys(o.need).every(k=>inv[k]>=o.need[k])){for(const k in o.need)inv[k]-=o.need[k];o.st='done';gold+=o.rw;rp(name,8);sfx('buy');talk(pre.concat([[name,'Entregue. Aqui, '+o.rw+' de ouro. Não vou esquecer.']]));return;}
+    const st=o.type==='bring'?'Ainda falta: '+needTxt(o.need)+'.':o.type==='talk'?'Já falou com '+o.tgt+'?':(o.stage===0?'Leve o embrulho a '+o.tgt+'.':'Volte com a resposta de '+o.tgt+'.');
+    talk(pre.concat([[name,st,[{t:'Continuar',say:'Então vá.'},{t:'Desistir da missão',f:()=>{o.st='fail';rp(name,-5);refreshNL();},say:'Entendo. Não vou esquecer isso.'}]]]));return;}
   if(QN.includes(name)&&qAvail(name)){
-    const need=genQ(name),rw=15+day*5;
-    talk([[name,'Preciso de '+needTxt(need)+' pra hoje. Pago '+rw+' de ouro. Aceita?',[
-      {t:'Aceito',f:()=>{QD[name]={day,st:'active',need,rw};refreshNL();},say:'Então traga hoje.'},
-      {t:'Recuso',f:()=>{QD[name]={day,st:'refused'};rp(name,-4);},say:'Entendo. Cada um carrega o que aguenta.'}]]]);return;}
-  const [ls,end]=fn(),b=REP[name]<25?0:REP[name]<50?1:2,BG=[['Fale logo. Tenho trabalho.','Some daqui.'],['Hm. Você de novo.','O de sempre?'],['Que bom te ver, príncipe.','Cuide-se lá embaixo.']],r=Math.random();
-  if(day<2){}else if(r<.3)ls.unshift([name,BG[b][Math.floor(Math.random()*2)]]);else if(r<.42)ls.unshift([name,'Você anda falando sozinho. O povo comenta.']);
-  talk(ls,end);
+    const q0=genQ(name),rw=15+day*5,desc=q0.type==='bring'?'Preciso de '+needTxt(q0.need)+' pra hoje.':q0.type==='talk'?'Vá falar com '+q0.tgt+' por mim.':'Leve este embrulho para '+q0.tgt+' e volte com a resposta.';
+    talk(pre.concat([[name,desc+' Pago '+rw+' de ouro. Aceita?',[
+      {t:'Aceito',f:()=>{QD[name]=Object.assign({day,st:'active',rw},q0);refreshNL();},say:'Combinado.'},
+      {t:'Recuso',f:()=>{QD[name]={day,st:'refused'};rp(name,-4);},say:'Entendo. Cada um carrega o que aguenta.'}]]]));return;}
+  const [ls,end]=fn(),b=REP[name]<25?0:REP[name]<50?1:2,BGL=[['Fale logo. Tenho trabalho.','Some daqui.'],['Hm. Você de novo.','O de sempre?'],['Que bom te ver, príncipe.','Cuide-se lá embaixo.']],r=Math.random();
+  if(day<2){}else if(r<.3)ls.unshift([name,BGL[b][Math.floor(Math.random()*2)]]);else if(r<.42)ls.unshift([name,'Você anda falando sozinho. O povo comenta.']);
+  talk(pre.concat(ls),end);
 }
 function sleepPen(){
   if(day>=2){if(q===20){gold=0;for(let i=1;i<=9;i++)inv[i]=0;rp('Thorin',-15);}else if(q===21){missed=Math.min(3,missed+1);rp('Supervisor',-5);}}
@@ -272,7 +283,7 @@ function openTree(k){
     return {t:`${n.t}${done?' ✔':''}<br><small>${c} ouro${n.mat?' + '+n.mat[1]+' '+MATN[n.mat[0]]:''}</small>`,dis:!ok,f:()=>{gold-=c;if(n.mat)inv[n.mat[0]]-=n.mat[1];B.push(i);if(k==='casa')U[n.key]++;else X[n.key]++;saveGame();openTree(k);}};});
   rows.push({t:'Sair',f:closePanel});
   openPanel('upg',k==='casa'?'Mesa de upgrades':'Dûrak — melhorias',rows,`<p>Ouro: ${gold}</p>`);}
-function dayGoal(){const t=bestLvl>60?4:bestLvl>30?3:2,m=Math.min(4,1+missed),n=Math.min(capOre(),(3+Math.floor(day*.8))*m),o={[t]:n};return {depth:0,kills:0,ore:o,txt:'entregue '+needTxt(o)};}
+function dayGoal(){const t=bestLvl>20?4:bestLvl>10?3:2,m=Math.min(4,1+missed),n=Math.min(capOre(),(3+Math.floor(day*.8))*m),o={[t]:n};return {depth:0,kills:0,ore:o,txt:'entregue '+needTxt(o)};}
 function npc(x,y,z,col,name,role,fn){
   box(x-.3,y,z-.25,x+.3,y+.9,z+.25,col,false);
   box(x-.22,y+.9,z-.22,x+.22,y+1.35,z+.22,SKIN,false);
@@ -443,7 +454,7 @@ function buildWorld(){
   box(40,7.8,14.5,42.4,8.4,14.7,RAIL);box(45.6,7.8,14.5,48,8.4,14.7,RAIL);
   box(42.5,7.8,16,45.5,8.4,18.8,BED,false);
   inter(44,7.8,17.4,2.6,'dormir','Cama',()=>{
-    if(q===8||q>=20)sleepDay();else talk([['','Ainda tem trabalho a fazer hoje.']]);
+    if(q===8||q>=20)confirmBox('Tem certeza que quer passar o dia?'+(q===20?' Você ainda não bateu o ponto.':''),sleepDay);else talk([['','Ainda tem trabalho a fazer hoje.']]);
   });
   // fogueira à esquerda (vista da cama olhando a porta), decorativa
   box(40,6,10.4,41.4,6.9,12.6,0x4a4540,true);box(40.4,6.9,10.9,41,7.4,12.1,0xd0601c,false);
@@ -490,7 +501,7 @@ let sndT=0,stT=0,atkCd=0,torchT=0,TDUR=90,tens=.25;
 const ores=()=>{let t=0;for(let i=1;i<=9;i++)t+=inv[i];return t;};
 const maxHP=()=>100+10*U.Resistência;
 function carve(i0,k0,i1,k1,h=3){for(let k=k0;k<=k1;k++)for(let i=i0;i<=i1;i++){if(i<1||k<0||i>=MW-1||k>=MD-1)continue;for(let j=JF+1;j<=JF+h;j++)mg[mi(i,j,k)]=0;}}
-function veinPick(){const L=mineLvl,r=rnd();if(L<=30)return 2;if(L<=60)return 3;if(L<=90)return 4;const k=L-91;return k<8?(r<.4?2:r<.7?5:3):k<20?(r<.3?3:r<.5?5:r<.75?6:4):(r<.25?6:r<.6?4:r<.8?7:3);}
+function veinPick(){const L=mineLvl,r=rnd();if(L<=10)return 2;if(L<=20)return 3;if(L<=30)return 4;const k=L-31;return k<8?(r<.4?2:r<.7?5:3):k<20?(r<.3?3:r<.5?5:r<.75?6:4):(r<.25?6:r<.6?4:r<.8?7:3);}
 const descI={x:0,y:-14,z:0,r:2.6,name:'descer mais fundo',act:()=>descend()};
 interactables.push(descI);label(0,0,0,'Descer ↓');const descL=lbls[lbls.length-1];
 const dT=new THREE.PointLight(0xffb84a,2.6,15,1.0);scene.add(dT);TORCH.push({l:dT,base:2.6,ph:1});
@@ -508,7 +519,7 @@ function mkSpider(x,z){
   spiders.push({g,legs,hp:6,x,z,cd:0,aggro:false,type:'spider'});
 }
 function genMine(seed){
-  seedRnd(seed);mg.fill(1);rooms=[];clearSpiders();clearStruct();kingOn=false;if(mineLvl===91){genAnte();return;}
+  seedRnd(seed);mg.fill(1);rooms=[];clearSpiders();clearStruct();kingOn=false;if(mineLvl===31){genAnte();return;}
   carve(26,0,34,10);
   let px=30,pz=10;
   const n=3+bandOf(mineLvl);
@@ -536,14 +547,24 @@ function genMine(seed){
   const L=rooms[rooms.length-1];
   descI.x=MX+L.cx+.5;descI.z=MZ+L.cz+.5;descL.x=descI.x;descL.y=-11.8;descL.z=descI.z;
   dM.position.set(descI.x,-14,descI.z);dT.position.set(descI.x+1.3,-11.1,descI.z);
-  for(let r=1;r<rooms.length-1;r++)mkStruct(rooms[r]);
+  const placed=[];for(let r=1;r<rooms.length-1;r++){const R2=rooms[r];if(placed.every(p=>Math.hypot(p.cx-R2.cx,p.cz-R2.cz)>=20)){mkStruct(R2);placed.push(R2);}}
 }
-function descend(){if(mineLvl===91&&!bossDead)return;goLevel(mineLvl+1);sfx('desc');if(mineLvl%10===1)talk([['','Camada '+mineLvl+'. O ar fica mais frio.']]);}
+var elevSave=[1];
+function confirmBox(msg,yes){openPanel('shop','Confirmar',[{t:'Sim',f:()=>{closePanel();yes();}},{t:'Não',f:closePanel}],'<p>'+msg+'</p>');}
+const elevPrice=L=>Math.round(12*L*(1+L/10));
+function descend(){
+  if(mineLvl===31&&!bossDead)return;
+  const L=mineLvl,go=()=>{goLevel(L+1);sfx('desc');if((L+1)%10===1)talk([['','Camada '+(L+1)+'. O ar fica mais frio.']]);};
+  if(elevSave.includes(L))confirmBox('Descer para a camada '+(L+1)+'?',go);
+  else{const pr=elevPrice(L);openPanel('shop','Descer de camada',[
+    {t:'Salvar a camada '+L+' no elevador ('+pr+' ouro) e descer',dis:gold<pr,f:()=>{closePanel();gold-=pr;elevSave.push(L);saveGame();go();}},
+    {t:'Descer sem salvar',f:()=>{closePanel();go();}},{t:'Ficar',f:closePanel}],'<p>Salvar a camada permite voltar direto a ela pelo elevador. Quanto mais fundo, mais caro.</p>');}
+}
 function aimSpider(){let b=null,bd=3.6;const fx=-Math.sin(P.yaw),fz=-Math.cos(P.yaw);
   for(const sp of spiders){const dx=sp.x-P.x,dz=sp.z-P.z,d=Math.hypot(dx,dz);if(d<bd&&(dx*fx+dz*fz)/d>.55){bd=d;b=sp;}}return b;}
 function killSpider(sp){scene.remove(sp.g);spiders.splice(spiders.indexOf(sp),1);const T=MT[sp.type];gold+=ri(T.g[0],T.g[1]);if(sp.type==='orc'||sp.type==='ogre'||sp.type==='boss')inv[9]+=ri(1,2);else{if(Math.random()<.7+.05*X.lootC)inv[8]++;if(Math.random()<.4+.05*X.lootC)inv[9]++;}dayKills++;sfx('kill');if(sp.type==='boss')onBossDead();}
 function hurt(n){if(invT>0)return;n*=1-Math.min(.6,.03*X.def);const a=ownedTier('arm');n*=1-(a>=0?ARM[a]:0);P.hp-=n;sfx('hurt');if(P.hp<=0)die();}
-function die(){if(mineLvl===91&&!bossDead&&!ghost){ghost=true;gameOver();return;}ghost=false;kingOn=false;gold=Math.floor(gold/2);for(let i=1;i<=9;i++)inv[i]=0;for(const n in REP)rp(n,-10);mineLvl=1;genMine(((Math.random()*1e9)|0)+1);rebuildMine();
+function die(){if(mineLvl===31&&!bossDead&&!ghost){ghost=true;gameOver();return;}ghost=false;kingOn=false;gold=Math.floor(gold/2);for(let i=1;i<=9;i++)inv[i]=0;for(const n in REP)rp(n,-10);mineLvl=1;genMine(((Math.random()*1e9)|0)+1);rebuildMine();
   spawnHome();P.hp=maxHP();P.st=1;torchT=0;startFade();talk([['','Tudo escurece. Você acorda em casa, sem os minérios e com metade do ouro.']]);}
 function updSpiders(dt){kT-=dt;if(kingOn&&kT<=0){kT=4;const bs=spiders.find(x=>x.type==='boss');if(bs){bs.hp-=4;burst(bs.x,-12.5,bs.z,0xb01818,10);sfx('hit');if(bs.hp<=0)killSpider(bs);}}
  const t=performance.now()/1000;
@@ -560,7 +581,7 @@ function updSpiders(dt){kT-=dt;if(kingOn&&kT<=0){kT=4;const bs=spiders.find(x=>x
   }}
 /* ---------- v6: camadas, monstros, estruturas, anteboss, boss, finais ---------- */
 var doorB=null,passB=null,kingI=null,kingG=null,kingOn=false,kT=0,endIdx=0,ghost=false,bossDead=false,bestLvl=1,stB=[],stI=[],stG=[];
-const bandOf=L=>L<=30?1:L<=60?2:3;
+const bandOf=L=>L<=10?1:L<=20?2:3;
 const MT={spider:{hp:6,sp:2.7,dm:8,sc:1,g:[3,8]},rat:{hp:3,sp:3.4,dm:4,sc:.55,g:[1,3],col:0x4a3a30},orc:{hp:16,sp:2.3,dm:14,sc:1.5,g:[8,18],col:0x35602a},ogre:{hp:36,sp:1.7,dm:26,sc:2.3,g:[20,40],col:0x6a6030},boss:{hp:140,sp:2.6,dm:35,sc:3.4,g:[200,300],col:0x7a1c1c}};
 function mkMon(type,x,z){
   const T=MT[type];if(type==='spider')return mkSpider(x,z);
@@ -617,7 +638,7 @@ function onBossDead(){bossDead=true;kingOn=false;if(passB){scene.remove(passB.m)
 function gameOver(){const t=['O rei jazia morto antes de você. Sem herdeiro, a montanha foi tomada por quem gritou mais alto. Thrain virou história de taverna.','Lutaram lado a lado, e a fera venceu os dois. Sem rei nem príncipe, a Grista mandou selar a mina para sempre.','O rei voltou ao salão e esperou. Ninguém subiu da mina. A Grista reinou no lugar de ambos, e o nome de Thrain se apagou.'][endIdx];
   openPanel('shop','Fim de jogo',[{t:'Acordar em casa',f:()=>{closePanel();die();}}],'<p>'+t+'</p>');}
 function goLevel(l){mineLvl=l;bestLvl=Math.max(bestLvl,l);genMine(((Math.random()*1e9)|0)+1);rebuildMine();P.x=-10;P.y=-14;P.z=63;P.vy=0;startFade();}
-function openElev(){const rows=[];for(let l=1;l<=Math.min(bestLvl,bossDead?999:91);l+=10)rows.push({t:'Camada '+l,f:()=>{closePanel();goLevel(l);}});rows.push({t:'Sair',f:closePanel});openPanel('shop','Elevador',rows,'<p>Pontos de descida liberados.</p>');}
+function openElev(){const rows=elevSave.slice().sort((a,b)=>a-b).map(l=>({t:'Camada '+l,f:()=>confirmBox('Ir para a camada '+l+'?',()=>goLevel(l))}));rows.push({t:'Sair',f:closePanel});openPanel('shop','Elevador',rows,'<p>Camadas salvas no elevador.</p>');}
 interactables.push({x:-10,y:-14,z:62,r:2.6,name:'elevador',act:openElev});label(-10,-12.2,62,'Elevador');
 var DEP=[0,0,0,0,0,0,0,0,0,0];
 const depTot=()=>DEP.reduce((a,b)=>a+b,0),depCap=()=>8+2*Math.floor(treeB.casa.length/3);
@@ -650,7 +671,7 @@ var invPrev=[0,0,0,0,0,0,0,0,0,0],invStk=[];
 function trackInv(){for(let i=1;i<=9;i++){const d=inv[i]-invPrev[i];if(d>0)for(let n=0;n<d;n++)invStk.push(i);else if(d<0)for(let n=0;n<-d;n++){const k=invStk.lastIndexOf(i);if(k>=0)invStk.splice(k,1);}invPrev[i]=inv[i];}if(invStk.length>300)invStk.splice(0,invStk.length-300);dropVis();}
 function dropVis(){const b=$('bDrop');if(!b)return;const v=(isTouch&&gameStarted&&!menuOn&&S.float&&ores()>0)?'block':'none';if(b.style.display!==v)b.style.display=v;}
 function dropLast(){trackInv();while(invStk.length){const i=invStk.pop();if(inv[i]>0){inv[i]--;invPrev[i]=inv[i];sfx('out');return;}}}
-var parts=[];const PG=new THREE.BoxGeometry(1,1,1);
+var swingT=0,parts=[];const PG=new THREE.BoxGeometry(1,1,1);
 function burst(x,y,z,c,n){const m=new THREE.MeshBasicMaterial({color:c});for(let i=0;i<n;i++){const e=new THREE.Mesh(PG,m),sz=.05+Math.random()*.06;e.scale.set(sz,sz,sz);e.position.set(x,y,z);scene.add(e);parts.push({e,vx:(Math.random()-.5)*3,vy:1.5+Math.random()*2.5,vz:(Math.random()-.5)*3,t:.7+Math.random()*.5});}}
 function updParts(dt){for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.t-=dt;p.vy-=9*dt;const q2=p.e.position;q2.x+=p.vx*dt;q2.y+=p.vy*dt;q2.z+=p.vz*dt;if(q2.y<-13.95){q2.y=-13.95;p.vy=0;p.vx*=.8;p.vz*=.8;}if(p.t<=0){scene.remove(p.e);parts.splice(i,1);}}}
 function consumeTorch(){const i=hot.findIndex(h=>h&&h.id==='tocha');if(i<0)return;hot[i].n--;if(hot[i].n<=0){hot[i]=null;if(sel===i)sel=-1;}sfx('out');hudHot();}
@@ -967,7 +988,7 @@ function useFood(){
 
 /* ---------- save ---------- */
 function saveGame(){
-  try{localStorage.setItem('abismo_save',JSON.stringify({day,inv,q,gold,U,hot,rep,tDebt,war,X,treeB,REP,missed,bestLvl,bossDead,DEP}));}catch(e){}
+  try{localStorage.setItem('abismo_save',JSON.stringify({day,inv,q,gold,U,hot,rep,tDebt,war,X,treeB,REP,missed,bestLvl,bossDead,DEP,elevSave}));}catch(e){}
 }
 function loadData(){try{return JSON.parse(localStorage.getItem('abismo_save')||'null');}catch(e){return null;}}
 
@@ -975,7 +996,7 @@ function loadData(){try{return JSON.parse(localStorage.getItem('abismo_save')||'
 function newGame(){
   day=1;q=0;gold=20;inv.fill(0);
   for(const k in U)U[k]=0;
-  hot.length=0;sel=-1;for(const k in X)X[k]=0;treeB.casa=[];treeB.feira=[];Object.assign(REP,REP0);for(const k in QD)delete QD[k];missed=0;bestLvl=1;bossDead=false;DEP=[0,0,0,0,0,0,0,0,0,0];rep=0;tDebt=false;tOffer=false;war=false;mineLvl=1;maxToday=1;dayKills=0;torchT=0;
+  hot.length=0;sel=-1;for(const k in X)X[k]=0;treeB.casa=[];treeB.feira=[];Object.assign(REP,REP0);for(const k in QD)delete QD[k];missed=0;bestLvl=1;bossDead=false;DEP=[0,0,0,0,0,0,0,0,0,0];elevSave=[1];rep=0;tDebt=false;tOffer=false;war=false;mineLvl=1;maxToday=1;dayKills=0;torchT=0;
   genMine(((Math.random()*1e9)|0)+1);rebuildMine();
   spawnHome();P.st=1;P.hp=maxHP();dayT=600;closeGate();if(q>=6&&q!==20)openGate();
   startFade();
@@ -985,7 +1006,7 @@ function newGame(){
 }
 function loadGame(){
   const d=loadData();if(!d)return false;
-  day=d.day||1;q=d.q||0;if(q===9)q=20;gold=d.gold??20;rep=d.rep||0;tDebt=!!d.tDebt;war=!!d.war;Object.assign(X,d.X||{});if(d.treeB)Object.assign(treeB,d.treeB);if(d.REP)Object.assign(REP,d.REP);missed=d.missed||0;bestLvl=d.bestLvl||1;bossDead=!!d.bossDead;DEP=d.DEP||[0,0,0,0,0,0,0,0,0,0];mineLvl=1;maxToday=1;dayKills=0;torchT=0;
+  day=d.day||1;q=d.q||0;if(q===9)q=20;gold=d.gold??20;rep=d.rep||0;tDebt=!!d.tDebt;war=!!d.war;Object.assign(X,d.X||{});if(d.treeB)Object.assign(treeB,d.treeB);if(d.REP)Object.assign(REP,d.REP);missed=d.missed||0;bestLvl=d.bestLvl||1;bossDead=!!d.bossDead;DEP=d.DEP||[0,0,0,0,0,0,0,0,0,0];elevSave=d.elevSave||[1];mineLvl=1;maxToday=1;dayKills=0;torchT=0;
   d.inv.forEach((v,i)=>{inv[i]=v;});
   Object.assign(U,d.U||{});
   if(d.hot)d.hot.forEach((v,i)=>{hot[i]=v;});
@@ -1109,7 +1130,7 @@ tens=spiders.some(x=>x.aggro)?1.2:(P.y<-12?.7:.25);
 
   camera.position.set(P.x,P.y+1.6,P.z);
   camera.rotation.set(P.pitch,P.yaw,0);
-  updateHand(mining&&!!tgt);
+  const press=!busy&&(mouseMine||touchMine||btnMine);if(press&&swingT<=0)swingT=.4;swingT-=dt;updateHand(swingT>0);
   const lid=(sel>=0&&hot[sel])?hot[sel].id:null;
   heldLight=lid==='lanterna'?'lanterna':(torchT>0?'tocha':null);
   if(heldLight==='lanterna'){torch.color.setHex(0xf4f8ff);torch.intensity=2.6*(1+.3*U.Lanterna);torch.distance=22+2*U.Lanterna;}
@@ -1233,7 +1254,7 @@ function updateHand(swing){
     const g=handModels[hot[sel].id];
     g.visible=true;
     if(g.userData.flame){const lit=torchT>0;g.userData.flame.material.color.setHex(lit?0xffb030:0x3a2a1a);const k=lit?1+.25*Math.sin(performance.now()/70):1;g.userData.flame.scale.set(k,lit?1.3*k:1,k);}
-    g.rotation.x=swing?-.6+Math.sin(performance.now()/90)*.5:0;
+    g.rotation.x=swing?-Math.sin(Math.PI*Math.max(0,Math.min(1,1-swingT/.4)))*1.1:0;
   }
 }
 
@@ -1289,7 +1310,7 @@ function startMusic(){
 
 /* ---------- start ---------- */
 resize();
-applyUI();
+applyUI();$('crt').style.display='block';
 buildWorld();
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.BasicShadowMap;
 torch.castShadow=true;torch.shadow.mapSize.set(512,512);torch.shadow.camera.near=.15;torch.shadow.camera.far=40;torch.shadow.bias=-.004;
